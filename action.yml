@@ -1,4 +1,5 @@
 name: 'Configure Datadog Test Visibility'
+author: step-security
 description: 'Installs Datadog tracers for configured languages and enables Test Visibility'
 branding:
   icon: 'bar-chart'
@@ -20,31 +21,31 @@ inputs:
   dotnet-tracer-version:
     description: 'The version of Datadog .NET tracer to use (optional). Defaults to the version pinned by this action release.'
     required: false
-    default: '3.50.0'
+    default: '3.55.1'
   java-tracer-version:
     description: 'The version of Datadog Java tracer to use (optional). Defaults to the version pinned by this action release.'
     required: false
-    default: '1.65.1'
+    default: '1.67.1'
   js-tracer-version:
     description: 'The version of Datadog JS tracer to use (optional). Defaults to the version pinned by this action release.'
     required: false
-    default: '6.12.0'
+    default: '6.21.0'
   python-tracer-version:
     description: 'The version of Datadog Python tracer to use (optional). Defaults to the version pinned by this action release.'
     required: false
-    default: '4.13.1'
+    default: '4.15.6'
   python-coverage-version:
     description: 'The version of the Python coverage package to use (optional). Defaults to the version pinned by this action release.'
     required: false
-    default: '7.15.4'
+    default: '7.16.2'
   ruby-tracer-version:
     description: 'The version of datadog-ci Ruby gem to use (optional). Defaults to the version pinned by this action release.'
     required: false
-    default: '1.37.0'
+    default: '1.42.0'
   go-tracer-version:
     description: 'The version of Orchestrion automatic compile-time instrumentation of Go code (https://github.com/datadog/orchestrion) to use (optional). Defaults to the version pinned by this action release.'
     required: false
-    default: 'v1.12.2'
+    default: 'v1.14.0'
   go-module-dir:
     description: 'Path to the Go module root directory to instrument (optional). Use this when the repository contains multiple Go modules or the Go module is not in the workspace root.'
     required: false
@@ -87,7 +88,7 @@ runs:
       env:
         REPO_PRIVATE: ${{ github.event.repository.private }}
       run: |
-        UPSTREAM="datadog/junit-upload-github-action"
+        UPSTREAM="datadog/test-visibility-github-action"
         ACTION_REPO="${GITHUB_ACTION_REPOSITORY:-}"
         DOCS_URL="https://docs.stepsecurity.io/actions/stepsecurity-maintained-actions"
 
@@ -182,10 +183,32 @@ runs:
 
         script_filepath="install_test_visibility.sh"
 
+        retry() {
+          local attempt exit_code delay
+          for attempt in 1 2 3; do
+            if "$@"; then
+              return 0
+            else
+              exit_code=$?
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              delay=$((2 ** attempt))
+              >&2 echo "Attempt $attempt failed. Retrying in $delay seconds..."
+              sleep "$delay"
+            fi
+          done
+          return "$exit_code"
+        }
+
         if command -v curl >/dev/null 2>&1; then
-          curl -Lo "$script_filepath" "$INSTALLATION_SCRIPT_URL"
+          retry curl -fLo "$script_filepath" "$INSTALLATION_SCRIPT_URL"
         elif command -v wget >/dev/null 2>&1; then
-          wget -O "$script_filepath" "$INSTALLATION_SCRIPT_URL"
+          wget_args=(-O "$script_filepath")
+          if [[ "$(wget --help 2>&1)" == *"--tries"* ]]; then
+            wget_args=(--tries=1 "${wget_args[@]}")
+          fi
+          retry wget "${wget_args[@]}" "$INSTALLATION_SCRIPT_URL"
         else
           >&2 echo "Error: Neither wget nor curl is installed."
           exit 1
@@ -205,7 +228,15 @@ runs:
         fi
 
         chmod +x $script_filepath
-        ./$script_filepath >> "$GITHUB_ENV"
+        script_env_filepath="$(mktemp)"
+        trap 'rm -f "$script_env_filepath"' EXIT
+
+        run_configuration_script() {
+          ./$script_filepath > "$script_env_filepath"
+        }
+
+        retry run_configuration_script
+        cat "$script_env_filepath" >> "$GITHUB_ENV"
       shell: bash
       env:
         DD_CIVISIBILITY_INSTRUMENTATION_LANGUAGES: ${{ inputs.languages }}

@@ -1,0 +1,12 @@
+{
+  "$comment": "Managed automatically when syncing with upstream. Do not edit by hand.",
+  "schema_version": 1,
+  "onboarding_type": "copied",
+  "action_type": "composite",
+  "upstream": {
+    "repository": "DataDog/test-visibility-github-action",
+    "synced_tag": "v3.3.0",
+    "synced_commit": "7ce545f228901e4ac4ef0b45d946120f1c4124e0",
+    "archived": false
+  }
+}
